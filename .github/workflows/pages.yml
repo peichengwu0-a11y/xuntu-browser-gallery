@@ -1,0 +1,41 @@
+name: Deploy browser image finder
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify JavaScript
+        run: |
+          node --check app.js
+          node --check bundle.js
+          node --check db.js
+          node --check search-worker.js
+          node --check vision-core.js
+          node --check shared-gallery.js
+      - name: Prepare static files
+        run: |
+          mkdir _site
+          cp index.html style.css pages.css app.js bundle.js db.js search-worker.js vision-core.js shared-gallery.js README.md .nojekyll _site/
+          cp -r vendor _site/vendor
+          if [ -d shared-gallery ]; then cp -r shared-gallery _site/shared-gallery; fi
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
