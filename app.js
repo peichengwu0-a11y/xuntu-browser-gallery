@@ -43,7 +43,7 @@ function render(){
     const body=document.createElement('div');body.className='card-body';const name=document.createElement('button');name.className='card-title';name.textContent=a.name;name.title=a.name;name.onclick=()=>openDetail(a.id);
     const heading=document.createElement('div');heading.className='card-heading';const edit=document.createElement('button');edit.className='card-edit';edit.textContent='编辑';edit.setAttribute('aria-label','编辑'+a.name+'的链接');edit.onclick=()=>openDetail(a.id);heading.append(name,edit);body.append(heading);
     const meta=document.createElement('p');meta.className='meta';meta.textContent=`${a.features.width} × ${a.features.height} · ${Math.round(a.size/1024)} KB`;body.append(meta);
-    if(a.evidence){const evidence=document.createElement('div');evidence.className='evidence';evidence.textContent=a.evidence.nearImage?'整体画面接近 · 请核对版本':`几何验证 ${a.evidence.inliers} 个点`;body.append(evidence);}
+    if(a.evidence){const evidence=document.createElement('div');evidence.className='evidence';evidence.textContent=`LightGlue · 几何验证 ${a.evidence.inliers} 个点`;body.append(evidence);}
     const locations=document.createElement('div');locations.className='card-locations';locations.append(locationRow(a,'CCH 链接',a.cch,'cchInput'),locationRow(a,'公盘路径',a.shared,'sharedInput'));body.append(locations);card.append(imageButton,body);$('grid').append(card);
   }
   $('empty').hidden=list.length>0;
@@ -57,7 +57,7 @@ function render(){
 function updateSelection(current=filtered().slice((state.page-1)*pageSize,state.page*pageSize)){
   const n=current.filter(a=>state.selected.has(a.id)).length;$('selectPage').checked=current.length>0&&n===current.length;$('selectPage').indeterminate=n>0&&n<current.length;$('selectPage').disabled=!current.length||state.busy;$('selectedCount').textContent=`已选 ${state.selected.size} 张`;$('deleteSelected').disabled=!state.selected.size||state.busy;
 }
-async function syncIndex(){await rpc('init',{records:state.assets.map(a=>({id:a.id,features:a.features})),shared:sharedGallery?{version:sharedGallery.version,shards:sharedGallery.shards}:null},progress);}
+async function syncIndex(){await rpc('init',{records:state.assets.map(a=>({id:a.id,features:a.features,imageUrl:a.imageUrl,blob:a.blob})),shared:sharedGallery?{version:sharedGallery.version,shards:sharedGallery.shards,lightglue:sharedGallery.lightglue}:null},progress);}
 function sortAssets(assets){return assets.sort((a,b)=>a.name.localeCompare(b.name,'zh-CN',{numeric:true})||a.path.localeCompare(b.path));}
 async function reloadAssets(){const overrides=await allAssets(),hidden=await hiddenIds(),merged=new Map((sharedGallery?.assets||[]).map(a=>[a.id,a]));for(const a of overrides)merged.set(a.id,{...merged.get(a.id),...a});state.assets=sortAssets([...merged.values()].filter(a=>!hidden.has(a.id)));}
 async function load(){sharedGallery=await fetchSharedGallery();await reloadAssets();render();if(sharedGallery){beginTask('准备共享素材库','首次访问正在加载预先生成的检索索引…');$('cancelTask').hidden=true;}try{await syncIndex();state.ready=true;}finally{endTask();}render();}
@@ -84,7 +84,7 @@ async function search(full=false){
   if(!state.query||state.busy)return;if(!state.assets.length){notice('请先导入素材。',true);return;}if(!state.ready){notice('检索引擎正在准备，请稍候。');return;}
   beginTask(full?'全库细节检索':'查找对应素材','图片在当前浏览器中比对…');notice('');
   try{const result=await rpc('search',{blob:state.query,full},progress);state.results=result.results;state.view='results';state.page=1;$('filter').value='';render();
-    notice(result.reason||`完成：比对 ${result.candidates} / ${result.total} 张素材，用时 ${result.seconds.toFixed(1)} 秒，找到 ${result.results.length} 个候选。${full?'':'可进行全库检索以核对未进入候选集的图片。'}`);
+    notice(result.reason||`LightGlue-ONNX · ${result.provider}：比对 ${result.candidates} / ${result.total} 张素材，用时 ${result.seconds.toFixed(1)} 秒，找到 ${result.results.length} 个候选。${full?'':'可进行全库检索以核对未进入候选集的图片。'}`);
     $('fullSearch').hidden=full||Boolean(result.reason);
   }catch(error){notice(error.message,true);}finally{endTask();}
 }

@@ -1,5 +1,6 @@
-importScripts('./vision-core.js');
-let records=[], lookup, cancelled=false,sharedRecords=[],sharedVersion='';
+importScripts('./vision-core.js','./lightglue-core.js');
+let records=[], lookup, cancelled=false,sharedRecords=[],sharedVersion='',neuralRecords=[],neuralLookup,neuralVersion='';
+const featureCache=new Map();
 const ready=(async()=>{importScripts('./vendor/opencv.js');return await self.cv;})();
 async function feature(blob) {
   const cv=await ready,bitmap=await createImageBitmap(blob);
@@ -38,24 +39,51 @@ async function onlineIndices(shared,id){
   }
   sharedRecords=loaded;sharedVersion=shared.version;return sharedRecords;
 }
+async function neuralIndex(shared,id){
+  if(!shared?.lightglue)return;
+  if(shared.lightglue.version===neuralVersion)return;
+  self.postMessage({id,progress:0,note:'正在加载 LightGlue 神经特征索引…'});
+  const response=await fetch(shared.lightglue.url);if(!response.ok)throw new Error('LightGlue 索引下载失败。');
+  const bytes=new Uint8Array(await new Response(response.body.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());
+  neuralRecords=LightGlue.unpack(bytes);neuralLookup=LightGlue.buildLookup(neuralRecords);neuralVersion=shared.lightglue.version;
+}
+async function neuralFeature(record){
+  if(featureCache.has(record.id))return featureCache.get(record.id);
+  let blob=record.blob;if(!blob){const response=await fetch(record.imageUrl);if(!response.ok)throw new Error('素材缩略图下载失败。');blob=await response.blob();}
+  const features=await LightGlue.extract(blob);featureCache.set(record.id,features);
+  if(featureCache.size>40)featureCache.delete(featureCache.keys().next().value);
+  return features;
+}
 self.onmessage=async({data})=>{
   if(data.type==='cancel'){cancelled=true;return;}
   const {id,type}=data;
   try {
-    if(type==='init'){await ready;const online=await onlineIndices(data.shared,id),wanted=new Set(data.records.map(r=>r.id)),merged=new Map(online.filter(r=>wanted.has(r.id)).map(r=>[r.id,r]));for(const r of data.records)if(r.features?.descriptors)merged.set(r.id,r);records=[...merged.values()];lookup=Vision.buildLookup(records);self.postMessage({id,result:true});}
+    if(type==='init'){featureCache.clear();await ready;const online=await onlineIndices(data.shared,id),wanted=new Set(data.records.map(r=>r.id)),merged=new Map(online.filter(r=>wanted.has(r.id)).map(r=>[r.id,r]));for(const r of data.records){if(r.features?.descriptors)merged.set(r.id,r);const target=merged.get(r.id);if(target)Object.assign(target,{blob:r.blob,imageUrl:r.imageUrl});}records=[...merged.values()];lookup=Vision.buildLookup(records);await neuralIndex(data.shared,id);self.postMessage({id,result:true});}
     if(type==='features') self.postMessage({id,result:await feature(data.blob)});
     if(type==='search') {
       cancelled=false;const cv=await ready,start=performance.now(),query=await feature(data.blob);
       if(query.variance<30){self.postMessage({id,result:{results:[],seconds:0,candidates:0,reason:'图片缺少可识别的细节，请使用包含素材画面的截图。'}});return;}
-      const candidates=data.full?records:Vision.shortlist(query,records,lookup),results=[];
-      for(let i=0;i<candidates.length;i++) {
+      self.postMessage({id,progress:0,note:'正在准备 LightGlue 模型并提取查询特征…'});
+      const learned=await LightGlue.extract(data.blob),orbCandidates=Vision.shortlist(query,records,lookup),coarse=[];
+      for(let i=0;i<orbCandidates.length;i++) {
         if(cancelled) throw new Error('检索已取消。');
-        const record=candidates[i],evidence=Vision.compare(cv,query,record.features);
-        if(evidence.accepted) results.push({id:record.id,...evidence});
-        if(i%8===0){self.postMessage({id,progress:(i+1)/candidates.length*100,note:`已比对 ${i+1} / ${candidates.length} 个候选`});await tick();}
+        const record=orbCandidates[i],evidence=Vision.compare(cv,query,record.features);coarse.push({id:record.id,...evidence});
+        if(i%8===0){self.postMessage({id,progress:(i+1)/orbCandidates.length*15,note:`正在查找候选 ${i+1} / ${orbCandidates.length}`});await tick();}
+      }
+      coarse.sort((a,b)=>b.score-a.score);
+      const neuralIds=neuralLookup?LightGlue.shortlist(LightGlue.fingerprint(learned),neuralLookup,16):[];
+      const ids=new Set([...neuralIds,...coarse.slice(0,8).map(x=>x.id)]);
+      // Local additions have no published neural index. They must remain searchable.
+      for(const record of records)if(record.blob)ids.add(record.id);
+      const byId=new Map(records.map(r=>[r.id,r])),candidates=data.full?records:[...ids].map(id=>byId.get(id)).filter(Boolean),results=[];
+      for(let i=0;i<candidates.length;i++){
+        if(cancelled)throw new Error('检索已取消。');const record=candidates[i];
+        self.postMessage({id,progress:15+i/candidates.length*85,note:`LightGlue 精细匹配 ${i+1} / ${candidates.length} · ${LightGlue.provider}`});
+        const reference=await neuralFeature(record),evidence=await LightGlue.match(cv,learned,reference);
+        if(evidence.accepted)results.push({id:record.id,...evidence});await tick();
       }
       results.sort((a,b)=>b.score-a.score);
-      self.postMessage({id,result:{results:results.slice(0,20),seconds:(performance.now()-start)/1000,candidates:candidates.length,total:records.length}});
+      self.postMessage({id,result:{results:results.slice(0,20),seconds:(performance.now()-start)/1000,candidates:candidates.length,total:records.length,engine:'LightGlue-ONNX',provider:LightGlue.provider}});
     }
   } catch(error){self.postMessage({id,error:error.message||'图片处理失败。'});}
 };
