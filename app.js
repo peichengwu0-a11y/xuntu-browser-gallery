@@ -31,8 +31,7 @@ function renderFolders(){
     if(node?.children.size){toggle.setAttribute('aria-label',(open?'收起 ':'展开 ')+name);toggle.setAttribute('aria-expanded',String(open));toggle.onclick=()=>{open?expandedFolders.delete(key):expandedFolders.add(key);renderFolders();};}
     else toggle.setAttribute('aria-hidden','true');
     const button=document.createElement('button');button.className='folder-item';button.disabled=state.busy;button.classList.toggle('active',folderKey(selectedFolder)===key);button.setAttribute('aria-current',folderKey(selectedFolder)===key?'true':'false');button.title=displayFolderPath(parts)||name;
-    const icon=document.createElement('span');icon.className='folder-icon';icon.textContent=parts.length?'▰':'▦';icon.setAttribute('aria-hidden','true');
-    const label=document.createElement('span');label.className='folder-label';label.textContent=name;const amount=document.createElement('span');amount.className='folder-count';amount.textContent=count.toLocaleString();button.append(icon,label,amount);button.onclick=()=>choose(parts);line.append(toggle,button);container.append(line);
+    const label=document.createElement('span');label.className='folder-label';label.textContent=name;const amount=document.createElement('span');amount.className='folder-count';amount.textContent=count.toLocaleString();button.append(label,amount);button.onclick=()=>choose(parts);line.append(toggle,button);container.append(line);
     if(state.manage&&parts.length){const edit=document.createElement('button');edit.className='folder-edit';edit.textContent='编辑';edit.disabled=state.busy;edit.setAttribute('aria-label','重命名 '+name);edit.onclick=()=>openFolderRename(parts);line.append(edit);}
     if(open&&node)for(const child of [...node.children.values()].sort((a,b)=>a.name.localeCompare(b.name,'zh-CN',{numeric:true})))row(child.name,child.parts,child.count,depth+1,child);
   };
