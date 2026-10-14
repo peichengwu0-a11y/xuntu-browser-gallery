@@ -18,6 +18,8 @@
   <p class="paste-note"><kbd>Ctrl</kbd> + <kbd>V</kbd> 可直接粘贴截图</p>
   </div>
 </aside>
+<div class="library-layout">
+<nav class="folder-sidebar" aria-label="素材文件夹"><h2>素材文件夹</h2><p class="folder-hint">按公盘目录浏览 · 搜图默认全部图库</p><div id="folderTree"></div></nav>
 <section class="workspace" aria-label="素材库">
   <div class="toolbar"><div class="tabs" role="tablist" aria-label="素材视图"><button id="allView" class="tab active" role="tab" aria-selected="true">素材库 <span id="count">0</span></button><button id="resultsView" class="tab" role="tab" aria-selected="false" disabled>搜索结果 <span id="resultCount">0</span></button></div><button id="refresh" class="secondary refresh">↻ <span>刷新素材库</span></button></div>
   <input type="file" id="bundleInput" accept=".zip" hidden><input type="file" id="imagesInput" accept="image/png,image/jpeg,image/webp" multiple hidden>
@@ -31,6 +33,7 @@
   <footer class="pagination workspace-footer"><span id="summary">尚未导入素材</span><div><button id="prev" class="secondary" disabled>上一页</button><span id="pageInfo">1 / 1</span><button id="next" class="secondary" disabled>下一页</button></div><span>原图 · CCH 链接 · 公盘路径</span></footer>
   <p class="search-note">先快速匹配，按需点击 LightGlue 精细匹配 · 共享图库 · 个人修改仅保存在此浏览器 · <a href="./README.md" target="_blank" rel="noopener">使用与部署说明 ↗</a></p>
 </section>
+</div>
 </main>
 <dialog id="detail"><div class="dialog-top"><div><div class="eyebrow">ASSET DETAILS</div><h2 id="detailTitle"></h2></div><button id="closeDetail" class="plain close" aria-label="关闭详情">×</button></div><div class="detail-layout"><div class="detail-image"><img id="detailImage" alt="素材预览"></div><div class="detail-fields detail-info"><p id="detailMeta" class="meta"></p><a id="download" class="primary wide" download>下载图片</a><div class="path-section"><label>原文件路径</label><div id="originalPath" class="path-text"></div><button id="copyOriginal" class="secondary wide">复制原文件地址</button></div><form id="linksForm"><h3>素材位置</h3><p class="form-note">补充链接，下次找到图片就能直接访问。</p><label for="cchInput">CCH 链接</label><input id="cchInput" type="url" maxlength="2048" placeholder="https://contenthub…"><a id="openCch" class="inline-link" target="_blank" rel="noopener noreferrer" hidden>打开 CCH ↗</a><label for="sharedInput">公盘路径</label><input id="sharedInput" maxlength="4096" placeholder="\\服务器\共享目录"><button id="copyShared" class="plain text-button" type="button">复制公盘路径</button><button type="submit" class="primary wide">保存链接</button><p class="muted">链接仅保存在当前浏览器，可随备份包迁移。</p></form></div></div></dialog>
 <dialog id="deleteDialog"><h2>删除选中的素材？</h2><p id="deleteNote"></p><p class="muted">只移除当前浏览器里的素材和链接，公盘原文件保持原样。</p><div class="actions"><button id="cancelDelete" class="secondary">取消</button><button id="confirmDelete" class="danger">确认删除</button></div></dialog>

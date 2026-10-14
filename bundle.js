@@ -1,4 +1,5 @@
 import './vendor/fflate.js';
+import {assignBundleFolders,validFolders} from './folders.js';
 const MAX_BUNDLE=200*1024*1024,MAX_UNPACKED=512*1024*1024;
 export async function identity(path) {
   const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(path.replaceAll('/','\\').toLowerCase()));
@@ -41,9 +42,10 @@ export async function readBundle(file) {
     if(typeof row.thumbnail!=='string'||!row.thumbnail.startsWith('thumbnails/')||row.thumbnail.includes('\\')||row.thumbnail.split('/').includes('..')) throw new Error('素材缩略图路径无效。');
     const content=files[row.thumbnail];if(!content)throw new Error('缺少缩略图：'+row.name);
     const backup=manifest.source==='tuji-browser-backup';
-    records.push({id:backup&&/^asset-[0-9a-f]{32}$/.test(row.id)?row.id:await identity(row.path),name:row.name,path:row.path,shared:String(row.folder_path||row.shared||''),cch:validCch(row.cch),imported:backup?Boolean(row.imported):true,blob:new Blob([content],{type:'image/jpeg'}),size:content.length});
+    records.push({id:backup&&/^asset-[0-9a-f]{32}$/.test(row.id)?row.id:await identity(row.path),name:row.name,path:row.path,shared:String(row.folder_path||row.shared||''),cch:validCch(row.cch),folders:backup&&validFolders(row.folders)?row.folders:undefined,imported:backup?Boolean(row.imported):true,blob:new Blob([content],{type:'image/jpeg'}),size:content.length});
   }
-  return {records,skipped,partial:Boolean(manifest.partial)};
+  const folderName=assignBundleFolders(file.name,records,manifest.source==='tuji-browser-backup');
+  return {records,skipped,partial:Boolean(manifest.partial),folderName};
 }
 export function validCch(value) {
   if(!value)return '';try{const url=new URL(value);return ['https:','http:'].includes(url.protocol)?url.href:'';}catch{return '';}
@@ -55,7 +57,7 @@ export async function exportBundle(records,onProgress) {
     const a=records[i],thumbnail=`thumbnails/${a.id}.jpg`,bytes=new Uint8Array(await a.blob.arrayBuffer());
     total+=bytes.length;if(total>190*1024*1024)throw new Error('备份超过 190 MB，请分批管理素材后导出。');
     files[thumbnail]=bytes;
-    assets.push({id:a.id,name:a.name,path:a.path,shared:a.shared,folder_path:a.shared,cch:a.cch,imported:a.imported,extension:'.jpg',thumbnail,status:'缩略图就绪'});
+    assets.push({id:a.id,name:a.name,path:a.path,shared:a.shared,folder_path:a.shared,folders:a.folders,cch:a.cch,imported:a.imported,extension:'.jpg',thumbnail,status:'缩略图就绪'});
     onProgress?.((i+1)/records.length*100);
   }
   files['manifest.json']=new TextEncoder().encode(JSON.stringify({schema_version:1,source:'tuji-browser-backup',exported_at:new Date().toISOString(),assets},null,2));

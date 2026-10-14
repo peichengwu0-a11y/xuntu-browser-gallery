@@ -28,10 +28,12 @@ jobs:
           node --check shared-gallery.js
           node --check lightglue-core.js
           node tests/search-stages.test.cjs
+          node --check folders.js
+          node tests/folders.test.cjs
       - name: Prepare static files
         run: |
           mkdir _site
-          cp index.html style.css pages.css app.js bundle.js db.js search-worker.js vision-core.js lightglue-core.js shared-gallery.js README.md .nojekyll _site/
+          cp index.html style.css pages.css app.js bundle.js db.js folders.js search-worker.js vision-core.js lightglue-core.js shared-gallery.js README.md .nojekyll _site/
           cp -r vendor _site/vendor
           if [ -d shared-gallery ]; then cp -r shared-gallery _site/shared-gallery; fi
       - uses: actions/configure-pages@v5
