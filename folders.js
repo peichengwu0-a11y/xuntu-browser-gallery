@@ -1,4 +1,10 @@
 export const folderKey=parts=>JSON.stringify(parts);
+export function folderName(parts,names={}){return names[folderKey(parts)]||parts.at(-1)||'全部素材';}
+export function cleanFolderNames(names){
+  const clean={};if(!names||typeof names!=='object'||Array.isArray(names))return clean;
+  for(const [key,name] of Object.entries(names).slice(0,10000)){try{const parts=JSON.parse(key);if(validFolders(parts)&&typeof name==='string'&&validFolders([name.trim()]))clean[folderKey(parts)]=name.trim();}catch{}}
+  return clean;
+}
 const split=value=>String(value||'').split(/[\\/]+/).filter(Boolean);
 const directory=asset=>asset.shared?split(asset.shared):split(asset.path).slice(0,-1);
 export function commonDirectory(assets){

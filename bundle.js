@@ -1,5 +1,5 @@
 import './vendor/fflate.js';
-import {assignBundleFolders,validFolders} from './folders.js';
+import {assignBundleFolders,validFolders,cleanFolderNames} from './folders.js';
 const MAX_BUNDLE=200*1024*1024,MAX_UNPACKED=512*1024*1024;
 export async function identity(path) {
   const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(path.replaceAll('/','\\').toLowerCase()));
@@ -45,12 +45,12 @@ export async function readBundle(file) {
     records.push({id:backup&&/^asset-[0-9a-f]{32}$/.test(row.id)?row.id:await identity(row.path),name:row.name,path:row.path,shared:String(row.folder_path||row.shared||''),cch:validCch(row.cch),folders:backup&&validFolders(row.folders)?row.folders:undefined,imported:backup?Boolean(row.imported):true,blob:new Blob([content],{type:'image/jpeg'}),size:content.length});
   }
   const folderName=assignBundleFolders(file.name,records,manifest.source==='tuji-browser-backup');
-  return {records,skipped,partial:Boolean(manifest.partial),folderName};
+  return {records,skipped,partial:Boolean(manifest.partial),folderName,folderNames:manifest.source==='tuji-browser-backup'?cleanFolderNames(manifest.folder_names):{}};
 }
 export function validCch(value) {
   if(!value)return '';try{const url=new URL(value);return ['https:','http:'].includes(url.protocol)?url.href:'';}catch{return '';}
 }
-export async function exportBundle(records,onProgress) {
+export async function exportBundle(records,onProgress,folderNames={}) {
   if(records.length>10000) throw new Error('单个备份包最多 10000 张，请先分批管理图库。');
   const files={},assets=[];let total=0;
   for(let i=0;i<records.length;i++) {
@@ -60,7 +60,7 @@ export async function exportBundle(records,onProgress) {
     assets.push({id:a.id,name:a.name,path:a.path,shared:a.shared,folder_path:a.shared,folders:a.folders,cch:a.cch,imported:a.imported,extension:'.jpg',thumbnail,status:'缩略图就绪'});
     onProgress?.((i+1)/records.length*100);
   }
-  files['manifest.json']=new TextEncoder().encode(JSON.stringify({schema_version:1,source:'tuji-browser-backup',exported_at:new Date().toISOString(),assets},null,2));
+  files['manifest.json']=new TextEncoder().encode(JSON.stringify({schema_version:1,source:'tuji-browser-backup',folder_names:cleanFolderNames(folderNames),exported_at:new Date().toISOString(),assets},null,2));
   const bytes=await new Promise((resolve,reject)=>fflate.zip(files,{level:0},(error,data)=>error?reject(error):resolve(data)));
   return new Blob([bytes],{type:'application/zip'});
 }
