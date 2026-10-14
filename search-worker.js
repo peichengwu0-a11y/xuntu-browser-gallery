@@ -1,6 +1,7 @@
 importScripts('./vision-core.js','./lightglue-core.js');
 let records=[], lookup, cancelled=false,sharedRecords=[],sharedVersion='',neuralRecords=[],neuralLookup,neuralVersion='';
 const featureCache=new Map();
+let configuredShared=null,lastQuick=null;
 const ready=(async()=>{importScripts('./vendor/opencv.js');return await self.cv;})();
 async function feature(blob) {
   const cv=await ready,bitmap=await createImageBitmap(blob);
@@ -58,19 +59,26 @@ self.onmessage=async({data})=>{
   if(data.type==='cancel'){cancelled=true;return;}
   const {id,type}=data;
   try {
-    if(type==='init'){featureCache.clear();await ready;const online=await onlineIndices(data.shared,id),wanted=new Set(data.records.map(r=>r.id)),merged=new Map(online.filter(r=>wanted.has(r.id)).map(r=>[r.id,r]));for(const r of data.records){if(r.features?.descriptors)merged.set(r.id,r);const target=merged.get(r.id);if(target)Object.assign(target,{blob:r.blob,imageUrl:r.imageUrl});}records=[...merged.values()];lookup=Vision.buildLookup(records);await neuralIndex(data.shared,id);self.postMessage({id,result:true});}
+    if(type==='init'){featureCache.clear();lastQuick=null;configuredShared=data.shared;await ready;const online=await onlineIndices(data.shared,id),wanted=new Set(data.records.map(r=>r.id)),merged=new Map(online.filter(r=>wanted.has(r.id)).map(r=>[r.id,r]));for(const r of data.records){if(r.features?.descriptors)merged.set(r.id,r);const target=merged.get(r.id);if(target)Object.assign(target,{blob:r.blob,imageUrl:r.imageUrl});}records=[...merged.values()];lookup=Vision.buildLookup(records);self.postMessage({id,result:true});}
     if(type==='features') self.postMessage({id,result:await feature(data.blob)});
     if(type==='search') {
-      cancelled=false;const cv=await ready,start=performance.now(),query=await feature(data.blob);
+      cancelled=false;const cv=await ready,start=performance.now(),cached=lastQuick?.key===data.queryKey?lastQuick:null,query=cached?.query||await feature(data.blob);
       if(query.variance<30){self.postMessage({id,result:{results:[],seconds:0,candidates:0,reason:'图片缺少可识别的细节，请使用包含素材画面的截图。'}});return;}
-      self.postMessage({id,progress:0,note:'正在准备 LightGlue 模型并提取查询特征…'});
-      const learned=await LightGlue.extract(data.blob),orbCandidates=Vision.shortlist(query,records,lookup),coarse=[];
+      const orbCandidates=cached?[]:Vision.shortlist(query,records,lookup),coarse=cached?.coarse||[];
       for(let i=0;i<orbCandidates.length;i++) {
         if(cancelled) throw new Error('检索已取消。');
         const record=orbCandidates[i],evidence=Vision.compare(cv,query,record.features);coarse.push({id:record.id,...evidence});
-        if(i%8===0){self.postMessage({id,progress:(i+1)/orbCandidates.length*15,note:`正在查找候选 ${i+1} / ${orbCandidates.length}`});await tick();}
+        if(i%8===0){self.postMessage({id,progress:(i+1)/orbCandidates.length*100,note:`快速匹配 ${i+1} / ${orbCandidates.length}`});await tick();}
       }
       coarse.sort((a,b)=>b.score-a.score);
+      lastQuick={key:data.queryKey,query,coarse};
+      if(data.mode==='quick'){
+        self.postMessage({id,result:{results:coarse.filter(x=>x.accepted).slice(0,20).map(x=>({...x,engine:'ORB'})),seconds:(performance.now()-start)/1000,candidates:coarse.length,total:records.length,engine:'ORB'}});return;
+      }
+      await neuralIndex(configuredShared,id);
+      if(cancelled)throw new Error('检索已取消。');
+      self.postMessage({id,progress:0,note:'正在准备 LightGlue 模型并提取查询特征…'});
+      const learned=await LightGlue.extract(data.blob);
       const neuralIds=neuralLookup?LightGlue.shortlist(LightGlue.fingerprint(learned),neuralLookup,16):[];
       const ids=new Set([...neuralIds,...coarse.slice(0,8).map(x=>x.id)]);
       // Local additions have no published neural index. They must remain searchable.

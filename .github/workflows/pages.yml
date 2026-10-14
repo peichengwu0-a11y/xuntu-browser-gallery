@@ -27,6 +27,7 @@ jobs:
           node --check vision-core.js
           node --check shared-gallery.js
           node --check lightglue-core.js
+          node tests/search-stages.test.cjs
       - name: Prepare static files
         run: |
           mkdir _site
