@@ -1,5 +1,5 @@
 import './vendor/fflate.js';
-import {assignBundleFolders,validFolders,cleanFolderNames} from './folders.js';
+import {assignBundleFolders,validFolders,cleanFolderNames} from './folders.js?v=20261014-fluid';
 const MAX_BUNDLE=200*1024*1024,MAX_UNPACKED=512*1024*1024;
 export async function identity(path) {
   const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(path.replaceAll('/','\\').toLowerCase()));

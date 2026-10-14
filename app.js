@@ -1,9 +1,9 @@
 import {allAssets,putAssets,removeAssets,hiddenIds} from './db.js';
-import {readBundle,exportBundle,imageRecord,validCch} from './bundle.js';
+import {readBundle,exportBundle,imageRecord,validCch} from './bundle.js?v=20261014-fluid';
 import {fetchSharedGallery,assetBlob} from './shared-gallery.js';
-import {buildFolders,folderKey,inFolder,assetFolders,commonDirectory,folderName,cleanFolderNames,validFolders} from './folders.js';
+import {buildFolders,folderKey,inFolder,assetFolders,commonDirectory,folderName,cleanFolderNames,validFolders} from './folders.js?v=20261014-fluid';
 const $=id=>document.getElementById(id),state={assets:[],results:[],view:'all',manage:false,page:1,selected:new Set(),query:null,queryKey:0,quickReady:false,busy:false,ready:false,cancelled:false,detail:null};
-const pageSize=36,worker=new Worker(new URL('./search-worker.js',import.meta.url)),pending=new Map();
+const pageSize=36,worker=new Worker(new URL('./search-worker.js?v=20261014-fluid',import.meta.url)),pending=new Map();
 let requestId=0,objectUrls=[],queryUrl,detailUrl,toastTimer,sharedGallery=null,folderModel={base:[],root:{children:new Map()}},selectedFolder=[],expandedFolders=new Set();
 const FOLDER_NAMES_KEY='tuji-folder-names-v1';let folderNames={},renamingFolder=null;
 try{folderNames=cleanFolderNames(JSON.parse(localStorage.getItem(FOLDER_NAMES_KEY)||'{}'));}catch{}
