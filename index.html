@@ -4,10 +4,11 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="description" content="导入本地素材包，通过截图找回素材与公盘位置。图片在当前浏览器中处理。">
   <meta name="application-name" content="tuji-browser-pages">
-  <title>寻图 · 浏览器版</title><link rel="stylesheet" href="./style.css"><link rel="stylesheet" href="./pages.css?v=20261016-paste"><script type="module" src="./app.js?v=20261016-paste"></script>
+  <title>寻图 · 浏览器版</title><link rel="stylesheet" href="./style.css"><link rel="stylesheet" href="./pages.css?v=20261016-file-warning"><script>if(location.protocol==='file:')document.documentElement.classList.add('local-file')</script><script type="module" src="./app.js?v=20261016-paste"></script>
 </head>
 <body>
 <header class="header"><a class="brand" href="./" aria-label="寻图浏览器版首页"><strong>BEAUTY <em>ASSET</em></strong></a><nav class="header-nav" aria-label="主导航"><button id="libraryTab" class="nav active">素材库</button><button id="manageTab" class="nav admin-link">后台上传</button></nav></header>
+<div class="file-warning" role="alert"><strong>请从正确的网址打开图库</strong><p>直接双击 index.html 时，浏览器无法读取图库，所以页面会一直显示“正在读取”。</p><a href="https://peichengwu0-a11y.github.io/xuntu-browser-gallery/">打开在线素材库</a><small>需要在这台电脑本地运行时，请双击“打开图迹.vbs”。</small></div>
 <main class="layout">
 <aside class="sidebar">
   <div class="hero-copy"><div class="eyebrow">BEAUTY ASSET LIBRARY</div><h1>找到正确的<br><span>素材资产。</span></h1><p class="intro">一张截图，找回素材与它的出处。</p></div>
