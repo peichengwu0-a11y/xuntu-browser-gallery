@@ -4,7 +4,7 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="description" content="导入本地素材包，通过截图找回素材与公盘位置。图片在当前浏览器中处理。">
   <meta name="application-name" content="tuji-browser-pages">
-  <title>寻图 · 浏览器版</title><link rel="stylesheet" href="./style.css"><link rel="stylesheet" href="./pages.css?v=20261014-icons"><script type="module" src="./app.js?v=20261014-icons"></script>
+  <title>寻图 · 浏览器版</title><link rel="stylesheet" href="./style.css"><link rel="stylesheet" href="./pages.css?v=20261016-paste"><script type="module" src="./app.js?v=20261016-paste"></script>
 </head>
 <body>
 <header class="header"><a class="brand" href="./" aria-label="寻图浏览器版首页"><strong>BEAUTY <em>ASSET</em></strong></a><nav class="header-nav" aria-label="主导航"><button id="libraryTab" class="nav active">素材库</button><button id="manageTab" class="nav admin-link">后台上传</button></nav></header>
@@ -15,7 +15,7 @@
   <input type="file" id="queryInput" accept="image/png,image/jpeg,image/webp" hidden>
   <button id="dropzone" class="dropzone"><span class="upload-icon" aria-hidden="true">↥</span><strong>拖入图片，开始查找</strong><span>或点击选择图片</span><small>JPG / PNG / WebP · 最大 15 MB</small></button>
   <div id="queryBox" class="query-panel" hidden><div class="query-heading"><strong>查找图片</strong><button id="clearQuery" class="plain text-button">清除</button></div><div class="query-frame"><img id="queryPreview" alt="上传的查询图片"></div><p id="queryName" class="query-name"></p><button id="searchAgain" class="primary wide">重新查找</button><button id="replaceQuery" class="secondary wide">更换图片</button></div>
-  <p class="paste-note"><kbd>Ctrl</kbd> + <kbd>V</kbd> 可直接粘贴截图</p>
+  <p class="paste-note"><button type="button" id="pasteQuery" class="plain">粘贴图片</button><span>或按 <kbd>Ctrl</kbd> + <kbd>V</kbd> 粘贴截图</span></p>
   </div>
 </aside>
 <div class="library-layout">

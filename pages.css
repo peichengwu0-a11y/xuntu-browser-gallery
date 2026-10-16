@@ -22,6 +22,7 @@
 .dropzone .upload-icon{width:40px;height:40px;margin-bottom:12px;font-size:24px}
 .dropzone strong{font-size:15px}.dropzone small{margin-top:12px}
 .paste-note{margin:12px 0 0;font-size:12px}
+.paste-note .plain{font-size:12px;font-weight:600;text-decoration:underline;text-underline-offset:3px}.paste-note span{color:#737378}
 .query-frame{height:156px}.query-panel .primary,.query-panel .secondary{min-height:40px}
 .library-layout{grid-template-columns:260px minmax(0,1fr);gap:28px;align-items:start}
 .folder-sidebar{padding:20px 16px;background:#fff;border:1px solid #e7e7ed;border-radius:20px;top:20px;max-height:calc(100dvh - 40px)}

@@ -4,7 +4,7 @@ import {fetchSharedGallery,assetBlob} from './shared-gallery.js';
 import {buildFolders,folderKey,inFolder,assetFolders,commonDirectory,folderName,cleanFolderNames,validFolders} from './folders.js?v=20261014-fluid';
 const $=id=>document.getElementById(id),state={assets:[],results:[],view:'all',manage:false,page:1,selected:new Set(),query:null,queryKey:0,quickReady:false,busy:false,ready:false,cancelled:false,detail:null};
 const pageSize=36,worker=new Worker(new URL('./search-worker.js?v=20261014-fluid',import.meta.url)),pending=new Map();
-let requestId=0,objectUrls=[],queryUrl,detailUrl,toastTimer,sharedGallery=null,folderModel={base:[],root:{children:new Map()}},selectedFolder=[],expandedFolders=new Set();
+let requestId=0,objectUrls=[],queryUrl,detailUrl,toastTimer,sharedGallery=null,waitingQuery=null,folderModel={base:[],root:{children:new Map()}},selectedFolder=[],expandedFolders=new Set();
 const FOLDER_NAMES_KEY='tuji-folder-names-v1';let folderNames={},renamingFolder=null;
 try{folderNames=cleanFolderNames(JSON.parse(localStorage.getItem(FOLDER_NAMES_KEY)||'{}'));}catch{}
 function saveFolderNames(names){const clean=cleanFolderNames(names);localStorage.setItem(FOLDER_NAMES_KEY,JSON.stringify(clean));folderNames=clean;}
@@ -113,7 +113,7 @@ async function search(mode='quick'){
     $('fullSearch').hidden=mode==='quick'||full||Boolean(result.reason);
   }catch(error){notice(error.message,true);}finally{endTask();}
 }
-function useQuery(file){if(!file||state.busy)return;if(file.size>15*1024*1024){notice('查询图片不能超过 15 MB。',true);return;}if(!['image/jpeg','image/png','image/webp'].includes(file.type)){notice('请选择 JPG、PNG 或 WebP 图片。',true);return;}
+function useQuery(file){if(!file)return;if(file.size>15*1024*1024){notice('查询图片不能超过 15 MB。',true);return;}if(!['image/jpeg','image/png','image/webp'].includes(file.type)){notice('请选择 JPG、PNG 或 WebP 图片。',true);return;}if(!state.ready){waitingQuery=file;notice('截图已接收，图库准备好后会自动查找。');return;}if(state.busy){notice('正在处理素材，请稍后重新粘贴图片。',true);return;}
   state.query=file;state.queryKey++;state.quickReady=false;state.results=[];$('fullSearch').hidden=true;if(queryUrl)URL.revokeObjectURL(queryUrl);queryUrl=URL.createObjectURL(file);$('queryPreview').src=queryUrl;$('queryName').textContent=file.name||'粘贴的截图';$('queryBox').hidden=false;$('dropzone').hidden=true;updateButtons();search();
 }
 function openDetail(id){state.detail=state.assets.find(a=>a.id===id);const a=state.detail;if(!a)return;if(detailUrl)URL.revokeObjectURL(detailUrl);detailUrl=a.blob?URL.createObjectURL(a.blob):null;const image=detailUrl||a.imageUrl;$('detailTitle').textContent=a.name;$('detailImage').src=image;$('detailMeta').textContent=`${a.features.width} × ${a.features.height} · ${a.online?'共享图库缩略图':a.imported?'素材包缩略图':'本地图片预览'}`;$('download').href=image;$('download').download=a.name.replace(/\.[^.]+$/,'')+'.jpg';$('download').textContent='下载缩略图';$('originalPath').textContent=a.path;$('sharedInput').value=a.shared;$('cchInput').value=a.cch;updateCch(a.cch);$('detail').showModal();}
@@ -130,7 +130,8 @@ const fullSearch=document.createElement('button');fullSearch.id='fullSearch';ful
 $('clearQuery').onclick=()=>{if(state.busy)return;state.query=null;state.quickReady=false;state.results=[];state.view='all';$('queryBox').hidden=true;$('dropzone').hidden=false;$('fullSearch').hidden=true;if(queryUrl)URL.revokeObjectURL(queryUrl);queryUrl=null;notice('');render();};
 for(const event of ['dragenter','dragover'])$('dropzone').addEventListener(event,e=>{e.preventDefault();$('dropzone').classList.add('drag');});
 $('dropzone').ondragleave=()=>$('dropzone').classList.remove('drag');$('dropzone').ondrop=e=>{e.preventDefault();$('dropzone').classList.remove('drag');if(e.dataTransfer.files[0])useQuery(e.dataTransfer.files[0]);};
-document.addEventListener('paste',e=>{if(e.target.matches('input,textarea')||$('detail').open)return;const image=[...e.clipboardData.items].find(i=>i.type.startsWith('image/'));if(image){e.preventDefault();useQuery(image.getAsFile());}});
+document.addEventListener('paste',e=>{if(document.querySelector('dialog[open]'))return;const image=[...(e.clipboardData?.items||[])].find(i=>i.type.startsWith('image/'))?.getAsFile()||[...(e.clipboardData?.files||[])].find(f=>f.type.startsWith('image/'));if(image){e.preventDefault();useQuery(image);}});
+$('pasteQuery').onclick=async()=>{if(!navigator.clipboard?.read){notice('请按 Ctrl+V 粘贴，或点击上方选择图片。',true);return;}try{const items=await navigator.clipboard.read();for(const item of items){const type=['image/png','image/jpeg','image/webp'].find(t=>item.types.includes(t));if(type){const blob=await item.getType(type);useQuery(new File([blob],'粘贴的截图.'+type.split('/')[1],{type}));return;}}notice('剪贴板中没有图片。请先复制图片，或点击上方选择图片。',true);}catch{notice('浏览器未允许读取剪贴板。请按 Ctrl+V 粘贴，或点击上方选择图片。',true);}};
 $('libraryTab').onclick=()=>{state.manage=false;render();};$('manageTab').onclick=()=>{state.manage=true;state.view='all';render();};
 $('cancelFolderRename').onclick=()=>$('renameFolderDialog').close();
 $('renameFolderDialog').addEventListener('close',()=>{renamingFolder=null;});
@@ -151,4 +152,4 @@ $('confirmDelete').onclick=async()=>{if(state.busy)return;beginTask('删除所�
 $('exportButton').onclick=async()=>{if(state.busy)return;beginTask('导出完整备份','备份包含图片、名称、路径和 CCH 链接。');$('cancelTask').hidden=true;try{const records=[];for(let i=0;i<state.assets.length;i++){const a=state.assets[i];records.push({...a,blob:await assetBlob(a)});progress(i/state.assets.length*100,`读取图片 ${i+1} / ${state.assets.length}`);}const blob=await exportBundle(records.map(a=>({...a,folders:assetFolders(a,folderModel.base)})),progress,folderNames),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='图迹备份-'+new Date().toISOString().slice(0,10)+'.zip';a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);notice('备份包已生成。请保存到安全位置，以便迁移和恢复。');}catch(error){notice(error.message,true);}finally{endTask();}};
 $('cancelTask').onclick=()=>{state.cancelled=true;worker.postMessage({type:'cancel'});$('cancelTask').disabled=true;$('taskNote').textContent='正在取消，请稍候…';};
 window.addEventListener('beforeunload',event=>{if(state.busy){event.preventDefault();event.returnValue='';}});
-notice('正在准备本机素材库与检索引擎…');load().then(()=>notice('')).catch(error=>notice('启动失败：'+error.message,true));
+notice('正在准备本机素材库与检索引擎…');load().then(()=>{const queued=waitingQuery;waitingQuery=null;if(queued)useQuery(queued);else notice('');}).catch(error=>notice('启动失败：'+error.message,true));
