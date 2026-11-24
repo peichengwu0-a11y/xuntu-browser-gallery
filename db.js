@@ -1,4 +1,4 @@
-const NAME = 'tuji-browser-pages-v1';
+const NAME = 'tuji-browser-pages-v2';
 let connection;
 export async function openDB() {
   if (connection) return connection;
