@@ -1,0 +1,11 @@
+{
+  "name": "xuntu-cos-gateway",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {"node": ">=22"},
+  "scripts": {"start": "node server.cjs"},
+  "dependencies": {
+    "cos-nodejs-sdk-v5": "3.0.0",
+    "sharp": "0.35.5"
+  }
+}
