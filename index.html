@@ -4,39 +4,47 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="description" content="导入本地素材包，通过截图找回素材与公盘位置。图片在当前浏览器中处理。">
   <meta name="application-name" content="tuji-browser-pages">
-  <title>寻图 · 浏览器版</title><link rel="stylesheet" href="./style.css"><link rel="stylesheet" href="./pages.css?v=20261124-cos"><script>if(location.protocol==='file:')document.documentElement.classList.add('local-file')</script><script type="module" src="./app.js?v=20261124-cos"></script>
+  <title>寻图 · 浏览器版</title><link rel="stylesheet" href="./style.css"><link rel="stylesheet" href="./pages.css?v=20261124-gallery-ui"><script>if(location.protocol==='file:')document.documentElement.classList.add('local-file')</script><script type="module" src="./app.js?v=20261126-public-previews"></script>
 </head>
 <body>
 <header class="header"><a class="brand" href="./" aria-label="寻图浏览器版首页"><strong>BEAUTY <em>ASSET</em></strong></a><nav class="header-nav" aria-label="主导航"><button id="libraryTab" class="nav active">素材库</button><button id="manageTab" class="nav admin-link">后台上传</button></nav></header>
 <div class="file-warning" role="alert"><strong>请从正确的网址打开图库</strong><p>直接双击 index.html 时，浏览器无法读取图库，所以页面会一直显示“正在读取”。</p><a href="https://peichengwu0-a11y.github.io/xuntu-browser-gallery/">打开在线素材库</a><small>需要在这台电脑本地运行时，请双击“打开图迹.vbs”。</small></div>
 <main class="layout">
 <aside class="sidebar">
-  <div class="hero-copy"><div class="eyebrow">BEAUTY ASSET LIBRARY</div><h1>找到正确的<br><span>素材资产。</span></h1><p class="intro">一张截图，找回素材与它的出处。</p></div>
+  <div class="hero-copy"><h1>以图找<span>素材</span></h1><p class="intro">用一张截图找回原图和素材出处。</p></div>
   <div class="search-panel">
   <input type="file" id="queryInput" accept="image/png,image/jpeg,image/webp" hidden>
-  <button id="dropzone" class="dropzone"><span class="upload-icon" aria-hidden="true">↥</span><strong>拖入图片，开始查找</strong><span>或点击选择图片</span><small>JPG / PNG / WebP · 最大 15 MB</small></button>
+  <button id="dropzone" class="dropzone"><strong>拖入图片，或点击选择</strong><small>JPG / PNG / WebP · 最大 15 MB</small></button>
   <div id="queryBox" class="query-panel" hidden><div class="query-heading"><strong>查找图片</strong><button id="clearQuery" class="plain text-button">清除</button></div><div class="query-frame"><img id="queryPreview" alt="上传的查询图片"></div><p id="queryName" class="query-name"></p><button id="searchAgain" class="primary wide">重新查找</button><button id="replaceQuery" class="secondary wide">更换图片</button></div>
   <p class="paste-note"><button type="button" id="pasteQuery" class="plain">粘贴图片</button><span>或按 <kbd>Ctrl</kbd> + <kbd>V</kbd> 粘贴截图</span></p>
   </div>
 </aside>
 <div class="library-layout">
-<nav class="folder-sidebar" aria-label="素材文件夹"><h2>素材文件夹</h2><p class="folder-hint">按公盘目录浏览 · 搜图默认全部图库</p><div id="folderTree"></div></nav>
+<nav class="folder-sidebar" aria-label="素材文件夹">
+  <h2>素材文件夹</h2>
+  <button id="folderDisclosure" type="button" class="folder-disclosure" aria-expanded="false" aria-controls="folderTree">素材文件夹</button>
+  <div id="folderTree"></div>
+</nav>
 <section class="workspace" aria-label="素材库">
-  <div class="toolbar"><div class="tabs" role="tablist" aria-label="素材视图"><button id="allView" class="tab active" role="tab" aria-selected="true">素材库 <span id="count">0</span></button><button id="resultsView" class="tab" role="tab" aria-selected="false" disabled>搜索结果 <span id="resultCount">0</span></button></div><button id="refresh" class="secondary refresh">↻ <span>刷新素材库</span></button></div>
+  <div class="toolbar">
+    <div class="tabs" role="tablist" aria-label="素材视图"><button id="allView" class="tab active" role="tab" aria-selected="true">素材库 <span id="count">0</span></button><button id="resultsView" class="tab" role="tab" aria-selected="false" disabled>搜索结果 <span id="resultCount">0</span></button></div>
+    <div class="toolbar-actions"><button id="cloudAccess" type="button" class="secondary" hidden>连接 COS 素材库</button><button id="refresh" class="secondary refresh">刷新素材库</button></div>
+  </div>
   <input type="file" id="bundleInput" accept=".zip" hidden><input type="file" id="imagesInput" accept="image/png,image/jpeg,image/webp" multiple hidden>
-  <div class="section-head"><div><h2 id="viewTitle">全部素材</h2><p id="viewKicker">正在读取素材库…</p><button id="cloudAccess" type="button" class="secondary" hidden>连接 COS 素材库</button></div><label class="filter"><span aria-hidden="true">⌕</span><input id="filter" type="search" placeholder="搜索素材名称…" aria-label="筛选素材"></label></div>
+  <div class="section-head"><div><h2 id="viewTitle">全部素材</h2><p id="viewKicker">正在读取素材库…</p></div><label class="filter"><input id="filter" type="search" placeholder="搜索素材名称或路径" aria-label="筛选素材"></label></div>
   <div id="importActions" class="import-actions" hidden><div><strong>浏览器素材管理</strong><p>所有人使用共享图库；此处添加、编辑或删除仅影响当前浏览器。</p></div><div class="actions"><button id="importButton" class="primary">导入公盘素材包</button><button id="addImages" class="secondary">添加图片</button></div></div>
   <div id="management" class="management" hidden><label><input id="selectPage" type="checkbox"> 选择当前页</label><button id="selectAll" class="plain">选择全部筛选结果</button><span id="selectedCount">已选 0 张</span><button id="deleteSelected" class="danger" disabled>删除所选</button><button id="exportButton" class="secondary">导出完整备份</button></div>
   <div id="status" role="status" aria-live="polite" class="notice" hidden></div>
   <div id="task" class="task" hidden><div class="task-line"><strong id="taskTitle"></strong><button id="cancelTask" class="plain">取消</button></div><progress id="progress" max="100" value="0"></progress><p id="taskNote"></p></div>
-  <div id="empty" class="empty"><div class="empty-icon" aria-hidden="true">▧</div><h3 id="emptyTitle">建立你的第一份素材库</h3><p id="emptyNote">导入拾盘 ZIP 素材包，或添加本地图片。之后就能用截图找回素材。</p><button id="emptyImport" class="primary">导入素材包</button></div>
+  <div id="skeleton" class="grid skeleton" aria-hidden="true"><div></div><div></div><div></div><div></div></div>
+  <div id="empty" class="empty" hidden><h3 id="emptyTitle">建立你的第一份素材库</h3><p id="emptyNote">导入拾盘 ZIP 素材包，或添加本地图片。之后就能用截图找回素材。</p><button id="emptyImport" class="primary">导入素材包</button></div>
   <div id="grid" class="grid"></div>
-  <footer class="pagination workspace-footer"><span id="summary">尚未导入素材</span><div><button id="prev" class="secondary" disabled>上一页</button><span id="pageInfo">1 / 1</span><button id="next" class="secondary" disabled>下一页</button></div><span>原图 · CCH 链接 · 公盘路径</span></footer>
-  <p class="search-note">先快速匹配，按需点击 LightGlue 精细匹配 · 共享图库 · 个人修改仅保存在此浏览器 · <a href="./README.md" target="_blank" rel="noopener">使用与部署说明 ↗</a></p>
+  <footer id="pagination" class="pagination workspace-footer" hidden><span id="summary">尚未导入素材</span><div><button id="prev" class="secondary" disabled>上一页</button><span id="pageInfo">1 / 1</span><button id="next" class="secondary" disabled>下一页</button></div></footer>
+  <p class="search-note"><a href="./README.md" target="_blank" rel="noopener">使用与部署说明</a></p>
 </section>
 </div>
 </main>
-<dialog id="detail"><div class="dialog-top"><div><div class="eyebrow">ASSET DETAILS</div><h2 id="detailTitle"></h2></div><button id="closeDetail" class="plain close" aria-label="关闭详情">×</button></div><div class="detail-layout"><div class="detail-image"><img id="detailImage" alt="素材预览"></div><div class="detail-fields detail-info"><p id="detailMeta" class="meta"></p><a id="download" class="primary wide" download>下载图片</a><div class="path-section"><label>原文件路径</label><div id="originalPath" class="path-text"></div><button id="copyOriginal" class="secondary wide">复制原文件地址</button></div><form id="linksForm"><h3>素材位置</h3><p class="form-note">补充链接，下次找到图片就能直接访问。</p><label for="cchInput">CCH 链接</label><input id="cchInput" type="url" maxlength="2048" placeholder="https://contenthub…"><a id="openCch" class="inline-link" target="_blank" rel="noopener noreferrer" hidden>打开 CCH ↗</a><label for="sharedInput">公盘路径</label><input id="sharedInput" maxlength="4096" placeholder="\\服务器\共享目录"><button id="copyShared" class="plain text-button" type="button">复制公盘路径</button><button type="submit" class="primary wide">保存链接</button><p class="muted">链接仅保存在当前浏览器，可随备份包迁移。</p></form></div></div></dialog>
+<dialog id="detail"><div class="dialog-top"><div><div class="eyebrow">ASSET DETAILS</div><h2 id="detailTitle"></h2></div><button id="closeDetail" class="plain close" aria-label="关闭详情">×</button></div><div class="detail-layout"><div class="detail-image"><img id="detailImage" alt="素材预览"></div><div class="detail-fields detail-info"><p id="detailMeta" class="meta"></p><a id="download" class="primary wide" download>下载图片</a><div id="detailCloudActions" class="cos-asset-actions" hidden></div><div class="path-section"><label>原文件路径</label><div id="originalPath" class="path-text"></div><button id="copyOriginal" class="secondary wide">复制原文件地址</button></div><form id="linksForm"><h3>素材位置</h3><p class="form-note">补充链接，下次找到图片就能直接访问。</p><label for="cchInput">CCH 链接</label><input id="cchInput" type="url" maxlength="2048" placeholder="https://contenthub…"><a id="openCch" class="inline-link" target="_blank" rel="noopener noreferrer" hidden>打开 CCH ↗</a><label for="sharedInput">公盘路径</label><input id="sharedInput" maxlength="4096" placeholder="\\服务器\共享目录"><button id="copyShared" class="plain text-button" type="button">复制公盘路径</button><button type="submit" class="primary wide">保存链接</button><p class="muted">链接仅保存在当前浏览器，可随备份包迁移。</p></form></div></div></dialog>
 <dialog id="deleteDialog"><h2>删除选中的素材？</h2><p id="deleteNote"></p><p class="muted">只移除当前浏览器里的素材和链接，公盘原文件保持原样。</p><div class="actions"><button id="cancelDelete" class="secondary">取消</button><button id="confirmDelete" class="danger">确认删除</button></div></dialog>
 <div id="toast" class="toast" role="status" hidden></div>
 <dialog id="cloudDialog" aria-labelledby="cloudTitle">

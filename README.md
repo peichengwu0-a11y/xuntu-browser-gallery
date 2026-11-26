@@ -1,6 +1,6 @@
 # 寻图 UI · GitHub Pages 浏览器搜图（独立项目）
 
-独立的新项目。与原来的“寻图”Python 网站使用不同目录、端口及数据存储。运行时不连接原网站 API。共享发布版包含经用户授权导出的 5,304 张缩略图、名称、公盘路径与预先生成的检索索引；导出时原数据库只读，原网站保持独立。
+在线产品图库使用随网站发布的 WebP 缩略图。浏览、筛选、预览和以图搜图均读取网站文件。公开站点只提供缩略图和图库内路径。COS 原图下载和 PS 导入可在已连接私有网关的本机版中使用。
 
 界面已按用户提供的“寻图”截图调整，直接复用原站 CSS；浏览器版的操作适配位于 `pages.css`。顶栏为 BEAUTY ASSET，页面标题为“寻图 · 浏览器版”。项目目录与启动文件仍沿用独立版原来的名称，以便区分工程。
 
@@ -26,7 +26,7 @@
 
 导入 ZIP 最大 200 MB、解压后最大 512 MB、每包最多 10000 张。单张查询或添加图片最大 15 MB、3500 万像素。导入取消时不保存部分记录；无法解码的图片会跳过并计入提示。
 
-所有访客自动加载 `shared-gallery/manifest.json` 指定的同一份共享图库。上传的查询图片只在浏览器内处理。个人添加、链接修改、隐藏素材存放在 IndexedDB（`tuji-browser-pages-v1`），只影响当前浏览器。清理网站数据、隐私模式或浏览器存储回收可能清除图库，请定期导出备份。localhost 和 GitHub Pages 的图库不同，迁移请用备份包。
+所有访客自动加载 `cos-snapshot/manifest.json` 指定的产品图库。上传的查询图片只在浏览器内处理。个人添加、链接修改、隐藏素材存放在 IndexedDB（`tuji-browser-pages-v1`），只影响当前浏览器。清理网站数据、隐私模式或浏览器存储回收可能清除个人图库，请定期导出备份。
 
 ## 检索方式与边界
 
@@ -41,7 +41,7 @@
 ## 部署到 GitHub Pages
 
 1. 在 GitHub 创建一个独立仓库，例如 `tuji-image-finder`。
-2. 把此文件夹里的项目文件提交到仓库根目录（包含 `.github/workflows/pages.yml`、`.nojekyll` 和 `vendor/`）。共享图片与索引保存在 `shared-gallery/`，一起发布。
+2. 提交网站项目文件，包括 `.github/workflows/pages.yml`、`.nojekyll`、`vendor/` 和 `cos-snapshot/`。Pages 工作流根据清单校验并打包缩略图。
 3. 默认分支使用 `main`。仓库 **Settings → Pages → Source** 选择 **GitHub Actions**。
 4. 推送 `main`，或到 **Actions → Deploy browser image finder → Run workflow** 执行部署。
 5. 成功后访问 `https://你的用户名.github.io/仓库名/`，自动加载共享图库。
@@ -50,7 +50,7 @@
 
 GitHub Pages 是静态托管，没有服务器端管理员账号、多人共享数据库或自动公盘扫描。本版以当前浏览器素材管理替代服务器后台；不会用前端密码冒充真正的账号权限。共享图库无需导入；个人修改迁移时可导入备份包。公盘地址需要复制到具有访问权限的资源管理器中使用。CCH 链接由用户填写。
 
-共享图库更新：运行 `scripts/build-shared-gallery.py --help` 查看只读导出参数，再运行 `python scripts/build-lightglue-index.py` 生成新的神经索引，然后提交并推送到 main，GitHub Actions 自动发布。网页里的“后台上传”是个人素材管理，不会更新所有人的图库。
+更新 COS 产品图库时，在项目根目录运行 `node scripts/site-previews.cjs export "<含 catalog.json 的缓存目录>"`，再随网站发布生成的 `cos-snapshot/`。网页里的“后台上传”只管理当前浏览器的个人素材。
 
 ## 检查
 

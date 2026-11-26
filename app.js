@@ -1,11 +1,15 @@
 import {allAssets,putAssets,removeAssets,hiddenIds} from './db.js';
 import {readBundle,exportBundle,imageRecord,validCch} from './bundle.js?v=20261014-fluid';
 import {fetchSharedGallery,assetBlob} from './shared-gallery.js';
-import {createCosGallery} from './cos-gallery.js';
+import {createCosGallery,fetchCosSnapshot} from './cos-gallery.js?v=20261125-site-thumbs';
 import {buildFolders,folderKey,inFolder,assetFolders,commonDirectory,folderName,cleanFolderNames,validFolders} from './folders.js?v=20261014-fluid';
 const $=id=>document.getElementById(id),state={assets:[],results:[],view:'all',manage:false,page:1,selected:new Set(),query:null,queryKey:0,quickReady:false,busy:false,ready:false,cancelled:false,detail:null};
 const pageSize=36,worker=new Worker(new URL('./search-worker.js?v=20261014-fluid',import.meta.url)),pending=new Map();
 let cloudGallery=null, cloudAssets=[], cloudExpires=0, cloudIndexAbort=null;
+let cloudPhotoshop=false;
+let cloudCanSync=false;
+let usingSnapshot=false;
+let libraryLoading=true;
 const cloudFeatures=new Map();
 let requestId=0,objectUrls=[],queryUrl,detailUrl,toastTimer,sharedGallery=null,waitingQuery=null,folderModel={base:[],root:{children:new Map()}},selectedFolder=[],expandedFolders=new Set();
 const FOLDER_NAMES_KEY='tuji-folder-names-v1';let folderNames={},renamingFolder=null;
@@ -31,7 +35,7 @@ function renderFolders(){
   const row=(name,parts,count,depth,node)=>{
     if(parts.length)name=folderName(parts,folderNames);
     const line=document.createElement('div');line.className='folder-row';line.style.setProperty('--depth',depth);
-    const key=folderKey(parts),open=expandedFolders.has(key),toggle=document.createElement('button');toggle.className='folder-toggle';toggle.disabled=state.busy||!node?.children.size;toggle.textContent=node?.children.size?(open?'▾':'▸'):'';
+    const key=folderKey(parts),open=expandedFolders.has(key),toggle=document.createElement('button');toggle.className='folder-toggle';toggle.disabled=state.busy||!node?.children.size;
     if(node?.children.size){toggle.setAttribute('aria-label',(open?'收起 ':'展开 ')+name);toggle.setAttribute('aria-expanded',String(open));toggle.onclick=()=>{open?expandedFolders.delete(key):expandedFolders.add(key);renderFolders();};}
     else toggle.setAttribute('aria-hidden','true');
     const button=document.createElement('button');button.className='folder-item';button.disabled=state.busy;button.classList.toggle('active',folderKey(selectedFolder)===key);button.setAttribute('aria-current',folderKey(selectedFolder)===key?'true':'false');button.title=displayFolderPath(parts)||name;
@@ -58,10 +62,14 @@ function render(){
   const current=list.slice((state.page-1)*pageSize,state.page*pageSize);
   $('count').textContent=visibleAssets().length.toLocaleString();$('resultCount').textContent=state.results.length;
   $('cloudAccess').hidden=state.manage||!cloudGallery;
-  $('cloudAccess').textContent=cloudGallery?.connected?`COS 素材库 · ${cloudAssets.length.toLocaleString()} 张`:'连接 COS 素材库';
+  $('cloudAccess').textContent=usingSnapshot&&!cloudGallery?.local
+    ?(cloudGallery?.connected?'原图访问已连接':'连接原图服务')
+    :cloudGallery?.connected?`COS 素材库 · ${cloudAssets.length.toLocaleString()} 张`:'连接 COS 素材库';
+  $('cloudAccess').classList.toggle('is-connected',Boolean(cloudGallery?.connected));
   $('libraryTab').classList.toggle('active',!state.manage);$('manageTab').classList.toggle('active',state.manage);
+  $('libraryTab').setAttribute('aria-pressed',String(!state.manage));$('manageTab').setAttribute('aria-pressed',String(state.manage));
   $('management').hidden=!state.manage;$('importActions').hidden=!state.manage;$('viewTitle').textContent=state.manage?'素材管理':state.view==='results'?'查找结果':folderName(selectedFolder,folderNames);
-  $('viewKicker').textContent=state.manage?`${list.length} 张素材 · 管理当前浏览器的素材与链接`:state.view==='results'?`${state.results.length} 个候选 · 搜索全部图库 · 请核对画面与文字版本`:selectedFolder.length?`${displayFolderPath(selectedFolder)} · ${list.length} 张图片`:`${state.assets.length} 张图片 · 点击图片查看原图与链接`;
+  $('viewKicker').textContent=libraryLoading&&!list.length?'正在读取素材库…':state.manage?`${list.length} 张素材 · 仅管理当前浏览器`:state.view==='results'?`${list.length} 个候选 · 请核对画面与文字版本`:selectedFolder.length?`${displayFolderPath(selectedFolder)} · ${list.length} 张图片`:`${list.length.toLocaleString()} 张图片`;
   $('allView').classList.toggle('active',state.view==='all');$('resultsView').classList.toggle('active',state.view==='results');
   $('allView').setAttribute('aria-selected',String(state.view==='all'));$('resultsView').setAttribute('aria-selected',String(state.view==='results'));
   $('grid').replaceChildren();
@@ -69,16 +77,38 @@ function render(){
     const card=document.createElement('article');card.className='card';
     if(state.manage){const check=document.createElement('input');check.type='checkbox';check.className='select-box';check.checked=state.selected.has(a.id);check.setAttribute('aria-label','选择 '+a.name);check.onchange=()=>{check.checked?state.selected.add(a.id):state.selected.delete(a.id);updateSelection(current);};card.append(check);}
     const imageButton=document.createElement('button');imageButton.className='card-image';imageButton.setAttribute('aria-label','查看 '+a.name);
-    const img=new Image();img.loading='lazy';img.referrerPolicy='no-referrer';img.src=a.blob?URL.createObjectURL(a.blob):a.imageUrl;if(a.blob)objectUrls.push(img.src);img.alt=a.name;imageButton.append(img);imageButton.onclick=()=>openDetail(a.id);
+    const img=new Image();
+    img.loading='lazy';img.referrerPolicy='no-referrer';img.alt=a.name;
+    img.addEventListener('error',()=>{
+      const fallback=document.createElement('span');
+      fallback.className='preview-unavailable';
+      fallback.textContent='预览暂不可用';
+      img.replaceWith(fallback);
+    },{once:true});
+    img.src=a.blob?URL.createObjectURL(a.blob):a.imageUrl;
+    if(a.blob)objectUrls.push(img.src);
+    imageButton.append(img);imageButton.onclick=()=>openDetail(a.id);
     const body=document.createElement('div');body.className='card-body';const name=document.createElement('button');name.className='card-title';name.textContent=a.name;name.title=a.name;name.onclick=()=>openDetail(a.id);
     const heading=document.createElement('div');heading.className='card-heading';const edit=document.createElement('button');edit.className='card-edit';edit.textContent='编辑';edit.setAttribute('aria-label','编辑'+a.name+'的链接');edit.onclick=()=>openDetail(a.id);heading.append(name,edit);body.append(heading);
     const meta=document.createElement('p');meta.className='meta';meta.textContent=a.cloud?`COS 原图 · ${Math.round(a.size/1024)} KB`:`${a.features.width} × ${a.features.height} · ${Math.round(a.size/1024)} KB`;body.append(meta);
     if(a.evidence){const evidence=document.createElement('div');evidence.className='evidence';evidence.textContent=`${a.evidence.engine==='ORB'?'快速匹配':'LightGlue'} · 几何验证 ${a.evidence.inliers} 个点`;body.append(evidence);}
-    if(a.cloud)edit.hidden=true;
+    if(a.cloud){
+      edit.hidden=true;
+      if(cloudGallery){
+        const actions=document.createElement('div');
+        actions.className='cos-asset-actions';
+        if(cloudPhotoshop)actions.append(cloudActionButton(a,'导入 PS','photoshop'));
+        actions.append(cloudActionButton(a,'下载原图','download'));
+        body.append(actions);
+      }
+    }
     else {const locations=document.createElement('div');locations.className='card-locations';locations.append(locationRow(a,'CCH 链接',a.cch,'cchInput'),locationRow(a,'公盘路径',a.shared,'sharedInput'));body.append(locations);}
     card.append(imageButton,body);$('grid').append(card);
   }
-  $('empty').hidden=list.length>0;
+  $('skeleton').hidden=!libraryLoading||list.length>0;
+  $('grid').setAttribute('aria-busy',String(libraryLoading));
+  $('empty').hidden=libraryLoading||list.length>0;
+  $('pagination').hidden=!list.length;
   $('emptyImport').hidden=state.assets.length>0;
   $('emptyTitle').textContent=!state.assets.length?'建立你的第一份素材库':state.view==='results'?'没有找到足够匹配的素材':'没有匹配的素材';
   $('emptyNote').textContent=!state.assets.length?'导入拾盘 ZIP 素材包，或添加本地图片。之后就能用截图找回素材。':state.view==='results'?'点击“LightGlue 精细匹配”继续查找，或换一张更清晰的截图。':'换一个名称或路径试试。';
@@ -92,11 +122,39 @@ function updateSelection(current=filtered().slice((state.page-1)*pageSize,state.
 async function syncIndex(){await rpc('init',{records:state.assets.map(a=>({id:a.id,features:a.features,imageUrl:a.imageUrl,blob:a.blob})),shared:sharedGallery?{version:sharedGallery.version,shards:sharedGallery.shards,lightglue:sharedGallery.lightglue}:null},progress);}
 function sortAssets(assets){return assets.sort((a,b)=>a.name.localeCompare(b.name,'zh-CN',{numeric:true})||a.path.localeCompare(b.path));}
 async function reloadAssets(){const overrides=await allAssets(),hidden=await hiddenIds(),merged=new Map((sharedGallery?.assets||[]).map(a=>[a.id,a]));for(const a of overrides)merged.set(a.id,{...merged.get(a.id),...a});state.assets=sortAssets([...merged.values()].filter(a=>!hidden.has(a.id)).concat(cloudAssets));}
-async function load(){sharedGallery=await fetchSharedGallery();await reloadAssets();render();if(sharedGallery){beginTask('准备共享素材库','首次访问正在加载预先生成的检索索引…');$('cancelTask').hidden=true;}try{await syncIndex();state.ready=true;}finally{endTask();}render();}
+async function load(){
+  [sharedGallery,cloudGallery]=await Promise.all([
+    fetchSharedGallery(),
+    createCosGallery().catch(error=>{console.warn(error.message);return null;})
+  ]);
+  const reconnect=cloudGallery?.local&&cloudGallery.canResume;
+  let message='';
+  if(reconnect||sharedGallery){
+    beginTask(reconnect?'正在恢复 COS 素材库':'准备共享素材库');
+    $('cancelTask').hidden=true;
+  }
+  try{
+    let catalog;
+    if(reconnect){
+      try{catalog=await cloudGallery.catalog();}
+      catch(error){message='COS 未能自动连接。'+error.message;}
+    }
+    if(!catalog){
+      try{catalog=await fetchCosSnapshot();}
+      catch(error){message=[message,error.message].filter(Boolean).join(' ');}
+    }
+    await updateCloudCatalog(catalog||{assets:[],expires:0});
+    state.ready=true;
+  }finally{endTask();}
+  return message;
+}
 
 async function updateCloudCatalog(catalog) {
+  usingSnapshot=Boolean(catalog.snapshot);
   cloudExpires=catalog.expires;
   cloudAssets=catalog.assets;
+  cloudPhotoshop=Boolean(catalog.photoshop);
+  cloudCanSync=Boolean(catalog.canSync);
   const versions=new Map(cloudAssets.map(asset=>[asset.id,asset.version]));
   for(const [id,entry] of cloudFeatures)if(versions.get(id)!==entry.version)cloudFeatures.delete(id);
   for(const asset of cloudAssets)asset.features=cloudFeatures.get(asset.id)?.features;
@@ -106,7 +164,7 @@ async function updateCloudCatalog(catalog) {
 
 async function prepareCloudIndex() {
   if(!cloudAssets.length)return 0;
-  if(cloudExpires-Date.now()<60_000)await updateCloudCatalog(await cloudGallery.catalog());
+  if(!usingSnapshot&&cloudExpires-Date.now()<60_000)await updateCloudCatalog(await cloudGallery.catalog());
   const remaining=cloudAssets.filter(asset=>!asset.features);
   if(!remaining.length)return 0;
 
@@ -139,12 +197,27 @@ async function prepareCloudIndex() {
   return skipped;
 }
 
+async function renewVisibleCloudGallery(){
+  if(usingSnapshot||document.hidden||state.busy||!state.ready||!cloudGallery?.connected||cloudExpires-Date.now()>60_000)return;
+  beginTask('正在恢复 COS 素材库');
+  $('cancelTask').hidden=true;
+  try{
+    await updateCloudCatalog(await cloudGallery.catalog());
+    render();
+  }catch(error){notice('COS 素材库暂时无法更新。'+error.message,true);}
+  finally{endTask();}
+}
+window.addEventListener('focus',renewVisibleCloudGallery);
+document.addEventListener('visibilitychange',renewVisibleCloudGallery);
+
 const cloudDialog=$('cloudDialog'), cloudForm=$('cloudForm'), cloudMessage=$('cloudMessage');
 function updateCloudDialog() {
   const connected=cloudGallery?.connected;
   for(const id of ['cloudCode','cloudLabel','cloudConnect'])$(id).hidden=connected;
   for(const id of ['cloudUsage','cloudDisconnect'])$(id).hidden=!connected;
-  cloudMessage.textContent=connected?`已连接，共 ${cloudAssets.length.toLocaleString()} 张素材。`:'请输入团队图库访问码。';
+  cloudMessage.textContent=usingSnapshot&&!cloudGallery?.local
+    ?(connected?'原图服务已连接。':'请输入团队访问码以下载原图。')
+    :connected?`已连接，共 ${cloudAssets.length.toLocaleString()} 张素材。`:'请输入团队图库访问码。';
 }
 $('cloudAccess').onclick=()=>{
   if(state.busy||!cloudGallery)return;
@@ -152,22 +225,30 @@ $('cloudAccess').onclick=()=>{
   cloudDialog.showModal();
 };
 $('cloudClose').onclick=()=>cloudDialog.close();
-cloudDialog.addEventListener('close',()=>{cloudForm.reset();});
+let pendingCloudAction=null;
+cloudDialog.addEventListener('close',()=>{cloudForm.reset();pendingCloudAction=null;});
 cloudForm.onsubmit=async event=>{
   event.preventDefault();
   if(state.busy||cloudGallery.connected)return;
   $('cloudConnect').disabled=true;
-  cloudMessage.textContent='正在读取 COS 素材目录…';
+  const originalsOnly=usingSnapshot&&!cloudGallery.local;
+  cloudMessage.textContent=originalsOnly?'正在验证原图访问权限…':'正在读取 COS 素材目录…';
   beginTask('正在连接 COS 素材库');
   $('cancelTask').hidden=true;
   try{
-    await updateCloudCatalog(await cloudGallery.catalog($('cloudCode').value.trim()));
+    const access=$('cloudCode').value.trim();
+    if(originalsOnly)await cloudGallery.authorize(access);
+    else await updateCloudCatalog(await cloudGallery.catalog(access));
+    const requested=pendingCloudAction;
     cloudDialog.close();
-    selectedFolder=[];
-    state.view='all';
-    state.page=1;
+    if(!originalsOnly){
+      selectedFolder=[];
+      state.view='all';
+      state.page=1;
+    }
     render();
-    notice(`已连接 COS 素材库 · ${cloudAssets.length} 张图片。`);
+    notice(originalsOnly?'原图服务已连接。':`已连接 COS 素材库 · ${cloudAssets.length} 张图片。`);
+    if(requested)await runCloudAction(requested.asset,requested.action,requested.label,requested.button);
   }catch(error){cloudMessage.textContent=error.message;}
   finally{
     $('cloudConnect').disabled=false;
@@ -178,7 +259,8 @@ $('cloudUsage').onclick=async()=>{
   try{
     const usage=await cloudGallery.usage();
     const since=new Date(usage.startedAt).toLocaleString('zh-CN');
-    cloudMessage.textContent=`${since} 起，尝试读取目录 ${usage.list} 次，尝试读取缩略图来源 ${usage.thumbnail} 次，签发原图链接 ${usage.originalLinks} 次。实际计费用量见腾讯云控制台。`;
+    const imported=Number.isInteger(usage.psOriginalReads)?`，为导入 PS 读取原图 ${usage.psOriginalReads} 次`:'';
+    cloudMessage.textContent=`${since} 起，尝试读取目录 ${usage.list} 次，尝试读取缩略图来源 ${usage.thumbnail} 次，签发原图链接 ${usage.originalLinks} 次${imported}。实际计费用量见腾讯云控制台。`;
   }catch(error){cloudMessage.textContent=error.message;}
 };
 $('cloudDisconnect').onclick=async()=>{
@@ -187,12 +269,14 @@ $('cloudDisconnect').onclick=async()=>{
   $('cancelTask').hidden=true;
   try{
     cloudGallery.disconnect();
-    cloudFeatures.clear();
-    await updateCloudCatalog({assets:[],expires:0});
-    state.results=state.results.filter(result=>!result.id.startsWith('cos:'));
-    state.view='all';
-    selectedFolder=[];
-    state.page=1;
+    if(!usingSnapshot){
+      const snapshot=await fetchCosSnapshot();
+      await updateCloudCatalog(snapshot||{assets:[],expires:0});
+      state.results=state.results.filter(result=>state.assets.some(asset=>asset.id===result.id));
+      state.view='all';
+      selectedFolder=[];
+      state.page=1;
+    }
     cloudDialog.close();
     render();
     notice('');
@@ -243,28 +327,66 @@ function openDetail(id){
   $('detailImage').src=image;
   $('detailMeta').textContent=asset.cloud?'COS 缩略图':`${asset.features.width} × ${asset.features.height} · ${asset.online?'共享图库缩略图':asset.imported?'素材包缩略图':'本地图片预览'}`;
   const download=$('download');
-  download.href=asset.cloud?'#':image;
-  download.download=asset.cloud?asset.name:asset.name.replace(/\.[^.]+$/,'')+'.jpg';
-  download.textContent=asset.cloud?'下载 COS 原图':'下载缩略图';
+  download.hidden=Boolean(asset.cloud);
+  const actions=$('detailCloudActions');
+  actions.replaceChildren();
+  actions.hidden=!asset.cloud||!cloudGallery;
+  if(asset.cloud&&cloudGallery){
+    if(cloudPhotoshop)actions.append(cloudActionButton(asset,'导入 PS','photoshop'));
+    actions.append(cloudActionButton(asset,'下载原图','download'));
+  }else if(!asset.cloud){
+    download.href=image;
+    download.download=asset.name.replace(/\.[^.]+$/,'')+'.jpg';
+    download.textContent='下载缩略图';
+  }
   $('linksForm').hidden=Boolean(asset.cloud);
+  const catalogPath=asset.cloud&&usingSnapshot;
+  $('originalPath').parentElement.querySelector('label').textContent=catalogPath?'图库内路径':'原文件路径';
+  $('copyOriginal').textContent=catalogPath?'复制图库内路径':'复制原文件地址';
   $('originalPath').textContent=asset.path;
   $('sharedInput').value=asset.shared;
   $('cchInput').value=asset.cch;
   updateCch(asset.cch);
   $('detail').showModal();
 }
-let originalInFlight=false;
-$('download').addEventListener('click',async event=>{
-  const asset=state.detail;
-  if(!asset?.cloud)return;
-  event.preventDefault();
-  if(originalInFlight)return;
-  originalInFlight=true;
-  const control=$('download');
-  control.textContent='正在获取原图…';
+const activeCloudActions=new Set();
+function cloudActionButton(asset,label,action){
+  const button=document.createElement('button');
+  button.type='button';
+  button.className=action==='photoshop'?'primary':'secondary';
+  button.textContent=label;
+  button.setAttribute('aria-label',label+' '+asset.name);
+  if(!cloudGallery){
+    button.textContent='原图暂未接入';
+    button.disabled=true;
+    button.title='网站尚未配置原图下载服务';
+    return button;
+  }
+  button.onclick=()=>runCloudAction(asset,action,label,button);
+  return button;
+}
+async function runCloudAction(asset,action,label,button){
+  if(!cloudGallery.connected){
+    pendingCloudAction={asset,action,label,button};
+    updateCloudDialog();
+    cloudDialog.showModal();
+    return;
+  }
+  const key=action==='photoshop'?'photoshop':asset.cloudId;
+  if(activeCloudActions.has(key)){
+    toast(action==='photoshop'?'已有素材在导入 PS，请稍候。':'正在准备这张原图，请稍候。');
+    return;
+  }
+  activeCloudActions.add(key);
+  button.disabled=true;
+  button.textContent=action==='photoshop'?'正在导入…':'正在获取…';
   try{
+    if(action==='photoshop'){
+      const result=await cloudGallery.importToPs(asset.cloudId);
+      toast('已导入 PS：'+result.documentName+' / '+result.boardName);
+      return;
+    }
     const url=await cloudGallery.original(asset.cloudId);
-    if(state.detail!==asset)return;
     const link=document.createElement('a');
     link.href=url;
     link.download=asset.name;
@@ -274,10 +396,11 @@ $('download').addEventListener('click',async event=>{
     link.remove();
   }catch(error){toast(error.message);}
   finally{
-    originalInFlight=false;
-    if(state.detail===asset)control.textContent='下载 COS 原图';
+    activeCloudActions.delete(key);
+    button.disabled=false;
+    button.textContent=label;
   }
-});
+}
 function updateCch(value){const url=validCch(value);$('openCch').hidden=!url;$('openCch').href=url||'#';}
 $('linksForm').onsubmit=async e=>{e.preventDefault();if(!state.detail||state.detail.cloud)return;const raw=$('cchInput').value.trim(),cch=validCch(raw);if(raw&&!cch){toast('CCH 链接需要使用 http 或 https。');return;}const updated={...state.detail,cch,shared:$('sharedInput').value.trim()};try{await putAssets([updated]);state.assets=state.assets.map(a=>a.id===updated.id?updated:a);state.detail=updated;updateCch(cch);render();toast('素材位置已保存。');}catch(error){toast('保存失败：'+error.message);}};
 $('copyOriginal').onclick=()=>copy(state.detail?.path);$('copyShared').onclick=()=>copy($('sharedInput').value.trim());$('closeDetail').onclick=()=>$('detail').close();
@@ -294,6 +417,10 @@ $('dropzone').ondragleave=()=>$('dropzone').classList.remove('drag');$('dropzone
 document.addEventListener('paste',e=>{if(document.querySelector('dialog[open]'))return;const image=[...(e.clipboardData?.items||[])].find(i=>i.type.startsWith('image/'))?.getAsFile()||[...(e.clipboardData?.files||[])].find(f=>f.type.startsWith('image/'));if(image){e.preventDefault();useQuery(image);}});
 $('pasteQuery').onclick=async()=>{if(!navigator.clipboard?.read){notice('请按 Ctrl+V 粘贴，或点击上方选择图片。',true);return;}try{const items=await navigator.clipboard.read();for(const item of items){const type=['image/png','image/jpeg','image/webp'].find(t=>item.types.includes(t));if(type){const blob=await item.getType(type);useQuery(new File([blob],'粘贴的截图.'+type.split('/')[1],{type}));return;}}notice('剪贴板中没有图片。请先复制图片，或点击上方选择图片。',true);}catch{notice('浏览器未允许读取剪贴板。请按 Ctrl+V 粘贴，或点击上方选择图片。',true);}};
 $('libraryTab').onclick=()=>{state.manage=false;render();};$('manageTab').onclick=()=>{state.manage=true;state.view='all';render();};
+$('folderDisclosure').onclick=event=>{
+  const button=event.currentTarget;
+  button.setAttribute('aria-expanded',String(button.getAttribute('aria-expanded')!=='true'));
+};
 $('cancelFolderRename').onclick=()=>$('renameFolderDialog').close();
 $('renameFolderDialog').addEventListener('close',()=>{renamingFolder=null;});
 $('renameFolderForm').onsubmit=e=>{
@@ -306,9 +433,19 @@ $('renameFolderForm').onsubmit=e=>{
 };
 $('refresh').onclick=async()=>{if(state.busy)return;beginTask('刷新素材库');$('cancelTask').hidden=true;try{
   sharedGallery=await fetchSharedGallery();
-  if(cloudGallery?.connected)await updateCloudCatalog(await cloudGallery.catalog());
-  else{await reloadAssets();await syncIndex();}
-  state.page=1;render();notice(cloudGallery?.connected||sharedGallery?'共享图库已更新。':'已重新读取当前浏览器的素材库。');
+  const sync=cloudGallery?.connected&&cloudCanSync;
+  if(usingSnapshot||!cloudGallery?.connected){
+    const snapshot=await fetchCosSnapshot();
+    if(usingSnapshot&&!snapshot)throw new Error('网站缩略图库暂时无法读取，请稍后重试。');
+    await updateCloudCatalog(snapshot||{assets:[],expires:0});
+  }
+  else await updateCloudCatalog(await cloudGallery.catalog(undefined,{refresh:sync}));
+  state.page=1;render();
+  if(usingSnapshot)notice(`网站缩略图库已更新 · ${cloudAssets.length.toLocaleString()} 张图片。`);
+  else if(cloudGallery?.connected)notice(sync
+    ?`已从 COS 同步目录 · ${cloudAssets.length.toLocaleString()} 张图片。新增缩略图将在后台生成。`
+    :`已读取图库缓存 · ${cloudAssets.length.toLocaleString()} 张图片。`);
+  else notice(sharedGallery?'共享图库已更新。':'已重新读取当前浏览器的素材库。');
 }catch(error){notice(error.message,true);}finally{endTask();}};
 $('allView').onclick=()=>{state.view='all';state.page=1;render();};$('resultsView').onclick=()=>{state.view='results';state.page=1;render();};
 $('filter').oninput=()=>{state.page=1;state.selected.clear();render();};$('prev').onclick=()=>{state.page--;render();};$('next').onclick=()=>{state.page++;render();};
@@ -318,8 +455,13 @@ $('confirmDelete').onclick=async()=>{if(state.busy)return;beginTask('删除所�
 $('exportButton').onclick=async()=>{if(state.busy)return;beginTask('导出完整备份','备份包含图片、名称、路径和 CCH 链接。');$('cancelTask').hidden=true;try{const records=[],assets=visibleAssets();for(let i=0;i<assets.length;i++){const a=assets[i];records.push({...a,blob:await assetBlob(a)});progress(i/assets.length*100,`读取图片 ${i+1} / ${assets.length}`);}const blob=await exportBundle(records.map(a=>({...a,folders:assetFolders(a,folderModel.base)})),progress,folderNames),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='图迹备份-'+new Date().toISOString().slice(0,10)+'.zip';a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);notice('备份包已生成。请保存到安全位置，以便迁移和恢复。');}catch(error){notice(error.message,true);}finally{endTask();}};
 $('cancelTask').onclick=()=>{state.cancelled=true;cloudIndexAbort?.abort();worker.postMessage({type:'cancel'});$('cancelTask').disabled=true;$('taskNote').textContent='正在取消，请稍候…';};
 window.addEventListener('beforeunload',event=>{if(state.busy){event.preventDefault();event.returnValue='';}});
-notice('正在准备本机素材库与检索引擎…');load().then(()=>{const queued=waitingQuery;waitingQuery=null;if(queued)useQuery(queued);else notice('');}).catch(error=>notice('启动失败：'+error.message,true));
-createCosGallery().then(gallery=>{
-  cloudGallery=gallery;
-  $('cloudAccess').hidden=!gallery||state.manage;
-}).catch(error=>console.warn(error.message));
+notice('正在准备本机素材库与检索引擎…');
+load().finally(()=>{
+  libraryLoading=false;
+  render();
+}).then(message=>{
+  const queued=waitingQuery;
+  waitingQuery=null;
+  if(queued)useQuery(queued);
+  else notice(message,Boolean(message));
+}).catch(error=>notice('启动失败：'+error.message,true));

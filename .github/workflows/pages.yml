@@ -30,13 +30,12 @@ jobs:
           node --check folders.js
           node tests/folders.test.cjs
       - name: Prepare static files
-        env:
-          XUNTU_COS_API: ${{ vars.XUNTU_COS_API }}
         run: |
           mkdir _site
           cp index.html style.css pages.css app.js bundle.js db.js folders.js search-worker.js vision-core.js lightglue-core.js shared-gallery.js cos-gallery.js README.md .nojekyll _site/
-          node -e "const c=require('./cos-config.json'); c.apiEndpoint=process.env.XUNTU_COS_API || c.apiEndpoint; require('node:fs').writeFileSync('_site/cos-config.json',JSON.stringify(c))"
+          echo '{"apiEndpoint":""}' > _site/cos-config.json
           cp -r vendor _site/vendor
+          node scripts/site-previews.cjs stage _site/cos-snapshot
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:
